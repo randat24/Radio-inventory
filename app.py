@@ -1,89 +1,78 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <title>Инвентаризация</title>
-    <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
+from flask import Flask, render_template, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime
 
-    <h1>
-        <img src="/static/icons/inventory.jpeg" alt="icon" class="title-icon">
-        Учёт оборудования
-    </h1>
+from flask import Flask, render_template, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime
 
-    <div class="controls">
-        <div>
-            <input type="text" id="searchInput" placeholder="Поиск...">
-            <button id="addRow">Добавить строку</button>
-            <button id="deleteSelected" class="red-btn">Удалить выбранное</button>
-        </div>
-    </div>
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
 
-    <div class="table-container">
-      <table id="inventoryTable">
-            <thead class="fics">
-                <tr>
-                    <th><input type="checkbox" id="selectAll"></th>
-                    <th>Модель</th>
-                    <th>Номер</th>
-                    <th>Статус</th>
-                    <th>S/N</th>
-                    <th>Где сейчас</th>
-                    <th>Статут</th>
-                    <th>Кто получил</th>
-                    <th>Дата</th>
-                    <th>Сдали</th>
-                    <th>Примечания</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in items %}
-                <tr data-id="{{ item.id }}">
-                    <td><input type="checkbox" class="row-checkbox"></td>
-                    <td>
-                        <select class="editable" data-field="model">
-                            {% for m in models %}
-                                <option value="{{ m }}" {% if item.model == m %}selected{% endif %}>{{ m }}</option>
-                            {% endfor %}
-                            <option value="__add_new__">➕ Добавить новое...</option>
-                        </select>
-                    </td>
-                    <td contenteditable="true" data-field="number">{{ item.number }}</td>
-                    <td>
-                        <select class="editable" data-field="status">
-                            {% for s in statuses %}
-                                <option value="{{ s }}" {% if item.status == s %}selected{% endif %}>{{ s }}</option>
-                            {% endfor %}
-                            <option value="__add_new__">➕ Добавить новое...</option>
-                        </select>
-                    </td>
-                    <td contenteditable="true" data-field="serial">{{ item.serial }}</td>
-                    <td>
-                        <select class="editable" data-field="location">
-                            {% for l in locations %}
-                                <option value="{{ l }}" {% if item.location == l %}selected{% endif %}>{{ l }}</option>
-                            {% endfor %}
-                            <option value="__add_new__">➕ Добавить новое...</option>
-                        </select>
-                    </td>
-                    <td>
-                        <select class="editable" data-field="state">
-                            {% for st in states %}
-                                <option value="{{ st }}" {% if item.state == st %}selected{% endif %}>{{ st }}</option>
-                            {% endfor %}
-                            <option value="__add_new__">➕ Добавить новое...</option>
-                        </select>
-                    </td>
-                    <td contenteditable="true" data-field="recipient">{{ item.recipient }}</td>
-                    <td contenteditable="true" data-field="date_issued">{{ item.date_issued }}</td>
-                    <td contenteditable="true" data-field="date_returned">{{ item.date_returned }}</td>
-                    <td contenteditable="true" data-field="notes">{{ item.notes }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    <script src="/static/script.js"></script>
-</body>
-</html>
+MODELS = ['ND', 'R7e', 'R7', 'DP4400', 'DP4400e', 'DP4401e']
+STATUSES = ['ND', 'Не учтеная', 'Списаная', 'Учтеная']
+LOCATIONS = ['ND', 'КСП', 'СП', 'РЕР', 'БПЛА']
+STATES = ['ND', 'На КСП', 'Выдано', 'На выход', 'Утеряна', 'Неизвестно', 'Дежурная']
+
+class Inventory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    model = db.Column(db.String(50))
+    number = db.Column(db.String(50))
+    status = db.Column(db.String(50))
+    serial = db.Column(db.String(50))
+    location = db.Column(db.String(50))
+    state = db.Column(db.String(50))
+    recipient = db.Column(db.String(100))
+    date_issued = db.Column(db.String(50))
+    date_returned = db.Column(db.String(50))
+    notes = db.Column(db.Text)
+
+with app.app_context():
+    db.create_all()
+
+@app.route('/')
+def index():
+    items = Inventory.query.all()
+    return render_template('index.html', items=items, models=MODELS,
+                           statuses=STATUSES, locations=LOCATIONS, states=STATES)
+
+@app.route('/update', methods=['POST'])
+def update():
+    data = request.get_json()
+    item = Inventory.query.get(data['id'])
+    if item and hasattr(item, data['field']):
+        setattr(item, data['field'], data['value'])
+        if data['field'] == 'state':
+            now = datetime.now().strftime('%Y-%m-%d %H:%M')
+            if data['value'] in ['Выдано', 'На выход']:
+                item.date_issued = now
+            elif data['value'] == 'На КСП':
+                item.date_returned = now
+                item.date_issued = ''
+        db.session.commit()
+        return jsonify(success=True)
+    return jsonify(success=False)
+
+@app.route('/add', methods=['POST'])
+def add():
+    new_item = Inventory(model='', number='', status='', serial='', location='РЕР',
+                         state='', recipient='', date_issued='', date_returned='', notes='')
+    db.session.add(new_item)
+    db.session.commit()
+    return jsonify(id=new_item.id)
+
+@app.route('/delete', methods=['POST'])
+def delete():
+    data = request.get_json()
+    ids = data.get('ids', [])
+    for item_id in ids:
+        item = Inventory.query.get(item_id)
+        if item:
+            db.session.delete(item)
+    db.session.commit()
+    return jsonify(success=True)
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
