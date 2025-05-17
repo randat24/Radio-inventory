@@ -13,7 +13,7 @@ db = SQLAlchemy(app)
 
 MODELS = ['ND', 'R7e', 'R7', 'DP4400', 'DP4400e', 'DP4401e']
 STATUSES = ['ND', 'Не учтеная', 'Списаная', 'Учтеная']
-LOCATIONS = ['ND', 'КСП', 'СП', 'РЕР', 'БПЛА']
+LOCATIONS = ['ND', 'РЕР', 'СП', 'КСП', 'БПЛА']
 STATES = ['ND', 'На КСП', 'Выдано', 'На выход', 'Утеряна', 'Неизвестно', 'Дежурная']
 
 class Inventory(db.Model):
